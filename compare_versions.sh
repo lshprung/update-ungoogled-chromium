@@ -13,16 +13,6 @@ IFS='.'
 read -ra V1 <<< "$1"
 read -ra V2 <<< "$2"
 
-# DEBUG
-for val in "${V1[@]}"; do
-	echo "$val"
-done
-echo ${#V1[@]}
-for val in "${V2[@]}"; do
-	echo "$val"
-done
-echo ${#V2[@]}
-
 # Determine shorter array (for the loop)
 LENGTH=${#V1[@]}
 

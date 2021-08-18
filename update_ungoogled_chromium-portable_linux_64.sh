@@ -3,6 +3,10 @@
 # Shell script to update ungoogled-chromium Portable Linux 64-bit to the latest version
 # $1            -> Wrapper symlink location
 # $2 (optional) -> Install location
+# Return Values:
+	# 0 -> failed
+	# 1 -> success, installed new version
+	# 2 -> success, did not install new version
 
 # If first time installing: user must specify a symlink location and an installation directory
 # If checking for updates: user must pass a symlink for ungoogled-chromium (this is typically just the command name if a symlink is part of the path)
@@ -55,5 +59,18 @@ if [ -h "$1" ]; then
 	echo "$MY_VERSION"
 
 	# Compare versions to determine if an update is necessary
-fi
+	$(get_absolute_path "compare_versions.sh") "$VERSION" "$MY_VERSION"
+	if [ $? -eq 0 ]; then
+		echo "ungoogled-chromium $MY_VERSION is up to date"
+		exit 2
+	fi
 
+	echo -n "Upgrade ungoogled-chromium to $VERSION? [Y/n] "
+	read INPUT
+	if [ "$INPUT" == "n" ]; then
+		exit 2
+	fi
+
+	# Prepare variables for upgrade
+	echo "ready to go"
+fi
