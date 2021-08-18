@@ -29,6 +29,29 @@ get_absolute_path() {
 	echo "$(dirname "$(which "$1")")/$1"
 }
 
+# Function to determine path to install to
+# $1 -> LOCATION or LINK target
+# Return Values:
+	# 0 -> failed, should print_help and exit after returning
+	# 1 -> success
+get_install_path() {
+	if [ -n "$1" ]; then
+		if [ ! -e "$1" ]; then
+			echo "Error: $1 does not exist"
+			return 0
+		fi
+		if [ ! -w "$1" ]; then
+			echo "Error: cannot write to $1; insufficient permissions"
+			return 0
+		fi
+
+		echo "$1"
+		return 1
+	fi
+
+	return 0
+}
+
 
 # Exit if $1 does not exist
 if [ -z "$1" ]; then
@@ -71,6 +94,37 @@ if [ -h "$1" ]; then
 		exit 2
 	fi
 
-	# Prepare variables for upgrade
+	# Get install path
+	INSTALL_TO=$(get_install_path $(echo "$2" | sed 's/[/]*$//g'))
+	if [ $? -eq 0 ]; then
+		INSTALL_TO=$(get_install_path $(readlink -f "$1" | sed 's/[/][^/]*[/][^/]*$//g'))
+		if [ $? -eq 0 ]; then
+			print_help
+			exit 0
+		fi
+	fi
+
+	echo "$INSTALL_TO"
 	echo "ready to go"
+
+else
+	# First time installation
+	if [ -z "$2" ]; then
+		echo "Error: Missing LOCATION argument"
+		print_help
+		exit 0
+	fi
+
+	# Check install path argument
+	INSTALL_TO=$(get_install_path $(echo "$2" | sed 's/[/]*$//g'))
+	if [ $? -eq 0 ]; then
+		print_help
+		exit 0
+	fi
+
+	echo -n "Install ungoogled-chromium $VERSION to $INSTALL_TO/? [Y/n] "
+	read INPUT
+	if [ "$INPUT" == "n" ]; then
+		exit 2
+	fi
 fi
