@@ -128,3 +128,22 @@ else
 		exit 2
 	fi
 fi
+
+# Download tar file to /tmp
+DOWNLOAD_URL=$(curl -s "$URL" | grep -E -o "href=\".*tar\.xz\"" | cut -d '"' -f 2)
+# wget --quiet -O "/tmp/ungoogled-chromium_${VERSION}_linux.tar.xz" "$DOWNLOAD_URL"
+TAR_FILE="/tmp/ungoogled-chromium_${VERSION}_linux.tar.xz"
+if [ ! -r "$TAR_FILE" ]; then
+	echo "Error: Issue downloading ungoogled-chromium $VERSION from $DOWNLOAD_URL"
+	exit 0
+fi
+
+# Check hash
+HASH=$(curl -s "$URL" | grep "MD5" | sed 's/<[^<>]*>//g;s/[ ]//g' | cut -d ':' -f 2)
+if [ "$HASH" != $(md5sum "$TAR_FILE" | cut -d ' ' -f 1) ]; then
+	echo "Error: MD5 checksum failed"
+	rm "$TAR_FILE"
+	exit 0
+fi
+
+# Extract to INSTALL_TO
