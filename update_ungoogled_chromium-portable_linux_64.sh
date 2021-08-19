@@ -77,7 +77,15 @@ echo "$VERSION"
 echo "$URL"
 
 # Check installed version number (if exists)
-if [ -h "$1" ]; then
+if [ -h "$1" ] && [ "$(readlink -f "$1" | grep -E -o "[/][^/]*$")" == "/chrome-wrapper" ]; then
+
+	# If the symlink exists, ensure I can write to it
+	if [ ! -w "$1" ]; then
+		echo "Error: Cannot write to $1"
+		print_help
+		exit 0
+	fi
+
 	MY_VERSION=$($1 --version | grep -E -o "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+")
 	echo "$MY_VERSION"
 
@@ -89,15 +97,15 @@ if [ -h "$1" ]; then
 	fi
 
 	echo -n "Upgrade ungoogled-chromium to $VERSION? [Y/n] "
-	read INPUT
+	read -r INPUT
 	if [ "$INPUT" == "n" ]; then
 		exit 2
 	fi
 
 	# Get install path
-	INSTALL_TO=$(get_install_path $(echo "$2" | sed 's/[/]*$//g'))
+	INSTALL_TO=$(get_install_path "$(echo "$2" | sed 's/[/]*$//g')")
 	if [ $? -eq 0 ]; then
-		INSTALL_TO=$(get_install_path $(readlink -f "$1" | sed 's/[/][^/]*[/][^/]*$//g'))
+		INSTALL_TO=$(get_install_path "$(readlink -f "$1" | sed 's/[/][^/]*[/][^/]*$//g')")
 		if [ $? -eq 0 ]; then
 			print_help
 			exit 0
@@ -115,35 +123,65 @@ else
 		exit 0
 	fi
 
+	# If a file exists already (that is not a symlink to ungoogled-chromium), then exit
+	if [ -e "$1" ]; then
+		echo "Error: $1 already exists"
+		print_help
+		exit 0
+	fi
+
+	# Check that a file can be created in this directory
+	touch "$1"
+	if [ ! $? -eq 0 ] || [ ! -w "$1" ]; then
+		echo "Error: Cannot write to $1"
+		print_help
+		exit 0
+	else
+		rm "$1"
+	fi
+
 	# Check install path argument
-	INSTALL_TO=$(get_install_path $(echo "$2" | sed 's/[/]*$//g'))
+	INSTALL_TO=$(get_install_path "$(echo "$2" | sed 's/[/]*$//g')")
 	if [ $? -eq 0 ]; then
 		print_help
 		exit 0
 	fi
 
 	echo -n "Install ungoogled-chromium $VERSION to $INSTALL_TO/? [Y/n] "
-	read INPUT
+	read -r INPUT
 	if [ "$INPUT" == "n" ]; then
 		exit 2
 	fi
 fi
 
+# Get the realpath of INSTALL_TO
+INSTALL_TO=$(realpath "$INSTALL_TO")
+
 # Download tar file to /tmp
+echo "Downloading ungoogled-chromium $VERSION"
 DOWNLOAD_URL=$(curl -s "$URL" | grep -E -o "href=\".*tar\.xz\"" | cut -d '"' -f 2)
-# wget --quiet -O "/tmp/ungoogled-chromium_${VERSION}_linux.tar.xz" "$DOWNLOAD_URL"
-TAR_FILE="/tmp/ungoogled-chromium_${VERSION}_linux.tar.xz"
-if [ ! -r "$TAR_FILE" ]; then
+TAR_FILE="ungoogled-chromium_${VERSION}_linux.tar.xz"
+wget --quiet -O "/tmp/$TAR_FILE" "$DOWNLOAD_URL"
+if [ ! -r "/tmp/$TAR_FILE" ]; then
 	echo "Error: Issue downloading ungoogled-chromium $VERSION from $DOWNLOAD_URL"
 	exit 0
 fi
 
 # Check hash
+echo "Checking MD5 hash"
 HASH=$(curl -s "$URL" | grep "MD5" | sed 's/<[^<>]*>//g;s/[ ]//g' | cut -d ':' -f 2)
-if [ "$HASH" != $(md5sum "$TAR_FILE" | cut -d ' ' -f 1) ]; then
+if [ "$HASH" != "$(md5sum "/tmp/$TAR_FILE" | cut -d ' ' -f 1)" ]; then
 	echo "Error: MD5 checksum failed"
-	rm "$TAR_FILE"
+	rm "/tmp/$TAR_FILE"
 	exit 0
 fi
 
-# Extract to INSTALL_TO
+# Extract to INSTALL_TO and get parent directory name from archive
+echo "Extracting to $INSTALL_TO/"
+tar -xf "/tmp/$TAR_FILE" --directory "$INSTALL_TO/" 
+PARENT_DIR=$(tar -tvf "/tmp/$TAR_FILE" | head -n 1 | cut -d ' ' -f 6 | cut -d '/' -f 1)
+
+# Create symlink
+# TODO check earlier if $1 is writable
+echo "Creating symlink $1"
+ln -s "$INSTALL_TO/$PARENT_DIR/chrome-wrapper" "$1"
