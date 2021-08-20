@@ -72,11 +72,7 @@ NAME=$(echo "$FULL_INFO" | head -n 1 | cut -d ':' -f 1)
 VERSION=$(echo "$FULL_INFO" | head -n 1 | cut -d ':' -f 2 | sed 's/^[ ]*//g' | grep -E -o "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+")
 URL=$(echo "$FULL_INFO" | sed -n "2p")
 
-echo "$NAME"
-echo "$VERSION"
-echo "$URL"
-
-# Check installed version number (if exists)
+# Check installed version number (if exists and link is valid)
 if [ -h "$1" ] && [ "$(readlink -f "$1" | grep -E -o "[/][^/]*$")" == "/chrome-wrapper" ]; then
 
 	# If the symlink exists, ensure I can write to it
@@ -87,7 +83,6 @@ if [ -h "$1" ] && [ "$(readlink -f "$1" | grep -E -o "[/][^/]*$")" == "/chrome-w
 	fi
 
 	MY_VERSION=$($1 --version | grep -E -o "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+")
-	echo "$MY_VERSION"
 
 	# Compare versions to determine if an update is necessary
 	$(get_absolute_path "compare_versions.sh") "$VERSION" "$MY_VERSION"
@@ -102,6 +97,9 @@ if [ -h "$1" ] && [ "$(readlink -f "$1" | grep -E -o "[/][^/]*$")" == "/chrome-w
 		exit 2
 	fi
 
+	# Get old install location for deletion later
+	OLD_INSTALL=$(get_install_path "$(readlink -f "$1" | sed 's/[/][^/]*$//g')")
+
 	# Get install path
 	INSTALL_TO=$(get_install_path "$(echo "$2" | sed 's/[/]*$//g')")
 	if [ $? -eq 0 ]; then
@@ -111,9 +109,6 @@ if [ -h "$1" ] && [ "$(readlink -f "$1" | grep -E -o "[/][^/]*$")" == "/chrome-w
 			exit 0
 		fi
 	fi
-
-	echo "$INSTALL_TO"
-	echo "ready to go"
 
 else
 	# First time installation
@@ -182,6 +177,14 @@ tar -xf "/tmp/$TAR_FILE" --directory "$INSTALL_TO/"
 PARENT_DIR=$(tar -tvf "/tmp/$TAR_FILE" | head -n 1 | cut -d ' ' -f 6 | cut -d '/' -f 1)
 
 # Create symlink
-# TODO check earlier if $1 is writable
 echo "Creating symlink $1"
-ln -s "$INSTALL_TO/$PARENT_DIR/chrome-wrapper" "$1"
+ln -fns "$INSTALL_TO/$PARENT_DIR/chrome-wrapper" "$1"
+
+# Cleanup
+echo "Removing /tmp/$TAR_FILE"
+rm "/tmp/$TAR_FILE"
+echo "$OLD_INSTALL" | grep -q "ungoogled-chromium"
+if [ "$?" -eq 0 ] && [ -w "$OLD_INSTALL" ]; then
+	echo "Removing $OLD_INSTALL"
+	rm -r "$OLD_INSTALL"
+fi
