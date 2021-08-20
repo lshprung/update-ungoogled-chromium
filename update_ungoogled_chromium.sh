@@ -12,6 +12,10 @@
 # If checking for updates: user must pass a symlink for ungoogled-chromium (this is typically just the command name if a symlink is part of the path)
 	# Use the symlink target to determine installation directory
 
+# URL for atom feed
+ATOM_URL="https://raw.githubusercontent.com/ungoogled-software/ungoogled-chromium-binaries/master/feed.xml"
+
+# Default platform to install/update
 PLATFORM="Portable Linux 64-bit"
 
 
@@ -23,13 +27,47 @@ print_help() {
 	echo "LOCATION is the desired install location for ungoogled-chromium. It does not need to be specified unless installing ungoogled-chromium for the first time"
 }
 
-# Function to determine absolute path of helper scripts
-# $1 -> script name
-get_absolute_path() {
-	echo "$(dirname "$(which "$1")")/$1"
+# Function to compare ungoogled-chromium version numbers
+# $1 -> up-to-date version number (from atom feed)
+# $2 -> currently installed version number
+# Return Values:
+	# 0 -> installed version is up-to-date
+	# 1 -> installed version can be upgraded
+compare_versions() {
+	# Break into arrays
+	local IFS='.'
+	read -ra V1 <<< "$1"
+	read -ra V2 <<< "$2"
+
+	# Determine shorter array (for the loop)
+	local LENGTH=${#V1[@]}
+
+	for (( i = 0 ; i < LENGTH ; i++ )); do
+		if [ "${V1[$i]}" -gt "${V2[$i]}" ]; then
+			return 1
+		elif [ "${V1[$i]}" -lt "${V2[$i]}" ]; then
+			return 0
+		fi
+	done
+
+	return 0
 }
 
-# Function to determine path to install to
+# Function to query for information about latest version of ungoogled-chromium (for specific version)
+# $1 -> platform name
+# Return Values:
+	# 0 -> error
+	# 1 -> success
+fetch_info() {
+	# Get table of available platforms, with versions, and URLs on the following line
+	local PLATFORM_TABLE=$(echo "$PARSED_XML" | grep -E '(/feed/entry/title=)|(/feed/entry/link/@href=)' | sed 's/^.*=//g')
+
+	# grep for PLATFORM in PLATFORM_TABLE, pull out two lines, starting from matching LINE_NUMBER
+	local LINE_NUMBER=$(echo "$PLATFORM_TABLE" | grep -m 1 -n "$PLATFORM" | cut -d ':' -f 1)
+	echo "$PLATFORM_TABLE" | sed -n "$LINE_NUMBER,$((LINE_NUMBER+1))p"
+}
+
+# Function to determine path to install to (and to perform sanity checks on that path)
 # $1 -> LOCATION or LINK target
 # Return Values:
 	# 0 -> failed, should print_help and exit after returning
@@ -61,12 +99,14 @@ if [ -z "$1" ]; then
 fi
 
 # Fetch info, break and store into variables
-FULL_INFO=$($(get_absolute_path "fetch_info.sh") "$PLATFORM")
+PARSED_XML=$(curl -s $ATOM_URL | xml2)
 
-if [ $? -eq 0 ]; then
-	echo "Error: Could not get latest version info"
+if [ ! $? -eq 0 ]; then
+	echo "Error: Could not parse atom URL $ATOM_URL"
 	exit 0
 fi
+
+FULL_INFO=$(fetch_info "$PLATFORM")
 
 NAME=$(echo "$FULL_INFO" | head -n 1 | cut -d ':' -f 1)
 VERSION=$(echo "$FULL_INFO" | head -n 1 | cut -d ':' -f 2 | sed 's/^[ ]*//g' | grep -E -o "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+")
@@ -85,7 +125,7 @@ if [ -h "$1" ] && [ "$(readlink -f "$1" | grep -E -o "[/][^/]*$")" == "/chrome-w
 	MY_VERSION=$($1 --version | grep -E -o "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+")
 
 	# Compare versions to determine if an update is necessary
-	$(get_absolute_path "compare_versions.sh") "$VERSION" "$MY_VERSION"
+	compare_versions "$VERSION" "$MY_VERSION"
 	if [ $? -eq 0 ]; then
 		echo "ungoogled-chromium $MY_VERSION is up to date"
 		exit 2
