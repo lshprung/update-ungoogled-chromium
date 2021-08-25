@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Shell script to update ungoogled-chromium Portable Linux 64-bit to the latest version
-# $1            -> Wrapper symlink location
+# $1 (optional) -> Wrapper symlink location (ungoogled-chromium by default)
 # $2 (optional) -> Install location
 # Return Values:
 	# 0 -> failed
@@ -18,12 +18,23 @@ ATOM_URL="https://raw.githubusercontent.com/ungoogled-software/ungoogled-chromiu
 # Default platform to install/update
 PLATFORM="Portable Linux 64-bit"
 
+# Set LINK argument (with a default value)
+LINK="ungoogled-chromium"
+if [ -n "$1" ]; then
+	LINK="$1"
+fi
+
+# Set LOCATION argument
+if [ -n "$2" ]; then
+	LOCATION="$2"
+fi
+
 
 # Print help message
 print_help() {
 	echo "Usage: $0 LINK [LOCATION]"
 	echo
-	echo "LINK is the path for a symlink pointing to the ungoogled-chromium executable"
+	echo "LINK is the path for a symlink pointing to the ungoogled-chromium executable (ungoogled-chromium by default)"
 	echo "LOCATION is the desired install location for ungoogled-chromium. It does not need to be specified unless installing ungoogled-chromium for the first time"
 }
 
@@ -91,13 +102,6 @@ get_install_path() {
 }
 
 
-# Exit if $1 does not exist
-if [ -z "$1" ]; then
-	echo "Error: too few arguments"
-	print_help
-	exit 0
-fi
-
 # Fetch info, break and store into variables
 PARSED_XML=$(curl -s $ATOM_URL | xml2)
 
@@ -112,17 +116,22 @@ NAME=$(echo "$FULL_INFO" | head -n 1 | cut -d ':' -f 1)
 VERSION=$(echo "$FULL_INFO" | head -n 1 | cut -d ':' -f 2 | sed 's/^[ ]*//g' | grep -E -o "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+")
 URL=$(echo "$FULL_INFO" | sed -n "2p")
 
+# Handle if LINK is in PATH by getting the absolute path with which
+if [ ! -e "$LINK" ]; then
+	LINK=$(which "$LINK")
+fi
+
 # Check installed version number (if exists and link is valid)
-if [ -h "$1" ] && [ "$(readlink -f "$1" | grep -E -o "[/][^/]*$")" == "/chrome-wrapper" ]; then
+if [ -h "$LINK" ] && [ "$(readlink -f "$LINK" | grep -E -o "[/][^/]*$")" == "/chrome-wrapper" ]; then
 
 	# If the symlink exists, ensure I can write to it
-	if [ ! -w "$1" ]; then
-		echo "Error: Cannot write to $1"
+	if [ ! -w "$LINK" ]; then
+		echo "Error: Cannot write to $LINK"
 		print_help
 		exit 0
 	fi
 
-	MY_VERSION=$($1 --version | grep -E -o "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+")
+	MY_VERSION=$($LINK --version | grep -E -o "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+")
 
 	# Compare versions to determine if an update is necessary
 	compare_versions "$VERSION" "$MY_VERSION"
@@ -138,12 +147,12 @@ if [ -h "$1" ] && [ "$(readlink -f "$1" | grep -E -o "[/][^/]*$")" == "/chrome-w
 	fi
 
 	# Get old install location for deletion later
-	OLD_INSTALL=$(get_install_path "$(readlink -f "$1" | sed 's/[/][^/]*$//g')")
+	OLD_INSTALL=$(get_install_path "$(readlink -f "$LINK" | sed 's/[/][^/]*$//g')")
 
 	# Get install path
-	INSTALL_TO=$(get_install_path "$(echo "$2" | sed 's/[/]*$//g')")
+	INSTALL_TO=$(get_install_path "$(echo "$LOCATION" | sed 's/[/]*$//g')")
 	if [ $? -eq 0 ]; then
-		INSTALL_TO=$(get_install_path "$(readlink -f "$1" | sed 's/[/][^/]*[/][^/]*$//g')")
+		INSTALL_TO=$(get_install_path "$(readlink -f "$LINK" | sed 's/[/][^/]*[/][^/]*$//g')")
 		if [ $? -eq 0 ]; then
 			print_help
 			exit 0
@@ -152,31 +161,31 @@ if [ -h "$1" ] && [ "$(readlink -f "$1" | grep -E -o "[/][^/]*$")" == "/chrome-w
 
 else
 	# First time installation
-	if [ -z "$2" ]; then
+	if [ -z "$LOCATION" ]; then
 		echo "Error: Missing LOCATION argument"
 		print_help
 		exit 0
 	fi
 
 	# If a file exists already (that is not a symlink to ungoogled-chromium), then exit
-	if [ -e "$1" ]; then
-		echo "Error: $1 already exists"
+	if [ -e "$LINK" ]; then
+		echo "Error: $LINK already exists"
 		print_help
 		exit 0
 	fi
 
 	# Check that a file can be created in this directory
-	touch "$1"
-	if [ ! $? -eq 0 ] || [ ! -w "$1" ]; then
-		echo "Error: Cannot write to $1"
+	touch "$LINK"
+	if [ ! $? -eq 0 ] || [ ! -w "$LINK" ]; then
+		echo "Error: Cannot write to $LINK"
 		print_help
 		exit 0
 	else
-		rm "$1"
+		rm "$LINK"
 	fi
 
 	# Check install path argument
-	INSTALL_TO=$(get_install_path "$(echo "$2" | sed 's/[/]*$//g')")
+	INSTALL_TO=$(get_install_path "$(echo "$LOCATION" | sed 's/[/]*$//g')")
 	if [ $? -eq 0 ]; then
 		print_help
 		exit 0
@@ -217,8 +226,8 @@ tar -xf "/tmp/$TAR_FILE" --directory "$INSTALL_TO/"
 PARENT_DIR=$(tar -tvf "/tmp/$TAR_FILE" | head -n 1 | cut -d ' ' -f 6 | cut -d '/' -f 1)
 
 # Create symlink
-echo "Creating symlink $1"
-ln -fns "$INSTALL_TO/$PARENT_DIR/chrome-wrapper" "$1"
+echo "Creating symlink $LINK"
+ln -fns "$INSTALL_TO/$PARENT_DIR/chrome-wrapper" "$LINK"
 
 # Cleanup
 echo "Removing /tmp/$TAR_FILE"
