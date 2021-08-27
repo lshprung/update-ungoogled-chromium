@@ -117,7 +117,7 @@ VERSION=$(echo "$FULL_INFO" | head -n 1 | cut -d ':' -f 2 | sed 's/^[ ]*//g' | g
 URL=$(echo "$FULL_INFO" | sed -n "2p")
 
 # Handle if LINK is in PATH by getting the absolute path with which
-if [ ! -e "$LINK" ]; then
+if [ ! -e "$LINK" ] && [ ! -e $(which "$LINK") ]; then
 	LINK=$(which "$LINK")
 fi
 
