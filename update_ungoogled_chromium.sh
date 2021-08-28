@@ -16,27 +16,24 @@
 ATOM_URL="https://raw.githubusercontent.com/ungoogled-software/ungoogled-chromium-binaries/master/feed.xml"
 
 # Default platform to install/update
-PLATFORM="Portable Linux 64-bit"
+DEFAULT_PLATFORM="Portable Linux 64-bit"
+PLATFORM="$DEFAULT_PLATFORM"
 
-# Set LINK argument (with a default value)
-LINK="ungoogled-chromium"
-if [ -n "$1" ]; then
-	LINK="$1"
-fi
-
-# Set LOCATION argument
-if [ -n "$2" ]; then
-	LOCATION="$2"
-fi
+# Should the user be prompted if a new version is available
+PROMPT=1
 
 
 # Print help message
 print_help() {
-	echo "Usage: $0 [LINK] [LOCATION]"
+	echo "Usage: $0 [OPTION]... [LINK] [LOCATION]"
 	echo
 	echo "$0 is a bash script that can help to automate installation and updating of ungoogled-chromium"
 	echo "LINK is the path or desired path for a symlink pointing to the ungoogled-chromium executable. If LINK is not specified, it will be set to ungoogled-chromium by default"
 	echo "LOCATION is the desired install location for ungoogled-chromium. It does not need to be specified unless installing ungoogled-chromium for the first time"
+	echo
+	echo "  -h, --help			Print this help message"
+	echo "  -p, --platform PLATFORM	Specify platform to target. Set to $DEFAULT_PLATFORM by default"
+	echo "  -y, --yes 			Automatic yes for all prompts"
 }
 
 # Function to compare ungoogled-chromium version numbers
@@ -68,14 +65,14 @@ compare_versions() {
 # Function to query for information about latest version of ungoogled-chromium (for specific version)
 # $1 -> platform name
 # Return Values:
-	# 0 -> error
-	# 1 -> success
+	# 1 -> error
+	# 0 -> success
 fetch_info() {
 	# Get table of available platforms, with versions, and URLs on the following line
 	local PLATFORM_TABLE=$(echo "$PARSED_XML" | grep -E '(/feed/entry/title=)|(/feed/entry/link/@href=)' | sed 's/^.*=//g')
 
 	# grep for PLATFORM in PLATFORM_TABLE, pull out two lines, starting from matching LINE_NUMBER
-	local LINE_NUMBER=$(echo "$PLATFORM_TABLE" | grep -m 1 -n "$PLATFORM" | cut -d ':' -f 1)
+	local LINE_NUMBER=$(echo "$PLATFORM_TABLE" | grep -i -m 1 -n "$PLATFORM" | cut -d ':' -f 1)
 	echo "$PLATFORM_TABLE" | sed -n "$LINE_NUMBER,$((LINE_NUMBER+1))p"
 }
 
@@ -103,6 +100,43 @@ get_install_path() {
 }
 
 
+# Read flags
+while [ $# -gt 0 ]; do
+	case "$1" in
+		-- )
+			shift
+			break
+			;;
+		-h | --help )
+			print_help
+			exit
+			;;
+		-p | --platform )
+			PLATFORM="$2"
+			shift
+			shift
+			;;
+		-y | --yes )
+			PROMPT=0
+			shift
+			;;
+		* )
+			break
+			;;
+	esac
+done
+
+# Set LINK argument (with a default value)
+LINK="ungoogled-chromium"
+if [ -n "$1" ]; then
+	LINK="$1"
+fi
+
+# Set LOCATION argument
+if [ -n "$2" ]; then
+	LOCATION="$2"
+fi
+
 # Fetch info, break and store into variables
 PARSED_XML=$(curl -s $ATOM_URL | xml2)
 
@@ -111,7 +145,16 @@ if [ ! $? -eq 0 ]; then
 	exit 0
 fi
 
+
 FULL_INFO=$(fetch_info "$PLATFORM")
+
+# Exit out if PLATFORM was invalid
+if [ $? = 1 ]; then
+	echo "Error: Unknown PLATFORM \"$PLATFORM\""
+	print_help
+	exit 0
+fi
+
 
 NAME=$(echo "$FULL_INFO" | head -n 1 | cut -d ':' -f 1)
 VERSION=$(echo "$FULL_INFO" | head -n 1 | cut -d ':' -f 2 | sed 's/^[ ]*//g' | grep -E -o "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+")
@@ -124,6 +167,9 @@ fi
 
 # Check installed version number (if exists and link is valid)
 if [ -h "$LINK" ] && [ "$(readlink -f "$LINK" | grep -E -o "[/][^/]*$")" == "/chrome-wrapper" ]; then
+
+	# To make things easier, get absolute path of LINK
+	LINK="$(realpath -s "$LINK")"
 
 	# If the symlink exists, ensure I can write to it
 	if [ ! -w "$LINK" ]; then
@@ -141,10 +187,12 @@ if [ -h "$LINK" ] && [ "$(readlink -f "$LINK" | grep -E -o "[/][^/]*$")" == "/ch
 		exit 2
 	fi
 
-	echo -n "Upgrade ungoogled-chromium to $VERSION? [Y/n] "
-	read -r INPUT
-	if [ "$INPUT" == "n" ]; then
-		exit 2
+	if [ $PROMPT = 1 ]; then
+		echo -n "Upgrade ungoogled-chromium to $VERSION? [Y/n] "
+		read -r INPUT
+		if [ "$INPUT" == "n" ]; then
+			exit 2
+		fi
 	fi
 
 	# Get old install location for deletion later
@@ -192,10 +240,12 @@ else
 		exit 0
 	fi
 
-	echo -n "Install ungoogled-chromium $VERSION to $INSTALL_TO/? [Y/n] "
-	read -r INPUT
-	if [ "$INPUT" == "n" ]; then
-		exit 2
+	if [ $PROMPT = 1 ]; then
+		echo -n "Install ungoogled-chromium $VERSION to $INSTALL_TO/? [Y/n] "
+		read -r INPUT
+		if [ "$INPUT" == "n" ]; then
+			exit 2
+		fi
 	fi
 fi
 
