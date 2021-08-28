@@ -32,9 +32,10 @@ fi
 
 # Print help message
 print_help() {
-	echo "Usage: $0 LINK [LOCATION]"
+	echo "Usage: $0 [LINK] [LOCATION]"
 	echo
-	echo "LINK is the path for a symlink pointing to the ungoogled-chromium executable (ungoogled-chromium by default)"
+	echo "$0 is a bash script that can help to automate installation and updating of ungoogled-chromium"
+	echo "LINK is the path or desired path for a symlink pointing to the ungoogled-chromium executable. If LINK is not specified, it will be set to ungoogled-chromium by default"
 	echo "LOCATION is the desired install location for ungoogled-chromium. It does not need to be specified unless installing ungoogled-chromium for the first time"
 }
 
