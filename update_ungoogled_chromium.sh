@@ -19,6 +19,11 @@ ATOM_URL="https://raw.githubusercontent.com/ungoogled-software/ungoogled-chromiu
 DEFAULT_PLATFORM="Portable Linux 64-bit"
 PLATFORM="$DEFAULT_PLATFORM"
 
+# Array of supported platforms
+# TODO add support for other platforms
+declare -A SUPPORTED_PLATFORMS
+SUPPORTED_PLATFORMS["Portable Linux 64-bit"]=1
+
 # Should the user be prompted if a new version is available
 PROMPT=1
 
@@ -60,20 +65,6 @@ compare_versions() {
 	done
 
 	return 0
-}
-
-# Function to query for information about latest version of ungoogled-chromium (for specific version)
-# $1 -> platform name
-# Return Values:
-	# 1 -> error
-	# 0 -> success
-fetch_info() {
-	# Get table of available platforms, with versions, and URLs on the following line
-	local PLATFORM_TABLE=$(echo "$PARSED_XML" | grep -E '(/feed/entry/title=)|(/feed/entry/link/@href=)' | sed 's/^.*=//g')
-
-	# grep for PLATFORM in PLATFORM_TABLE, pull out two lines, starting from matching LINE_NUMBER
-	local LINE_NUMBER=$(echo "$PLATFORM_TABLE" | grep -i -m 1 -n "$PLATFORM" | cut -d ':' -f 1)
-	echo "$PLATFORM_TABLE" | sed -n "$LINE_NUMBER,$((LINE_NUMBER+1))p"
 }
 
 # Function to determine path to install to (and to perform sanity checks on that path)
@@ -145,20 +136,53 @@ if [ ! $? -eq 0 ]; then
 	exit 0
 fi
 
+# Get table of available platforms, with versions, and URLs on the following line
+PLATFORM_TABLE=$(echo "$PARSED_XML" | grep -E '(/feed/entry/title=)|(/feed/entry/link/@href=)' | sed 's/^.*=//g')
 
-FULL_INFO=$(fetch_info "$PLATFORM")
+# Get platform information matching PLATFORM, handle any ambiguity by prompting for a selection (PLATFORM+SELECT)
+LINE_NUMBER=$(echo "$PLATFORM_TABLE" | grep -i -n "$PLATFORM" | cut -d ':' -f 1)
+while read -r line; do
+	FULL_INFO="$(echo -e "$FULL_INFO\n$(echo "$PLATFORM_TABLE" | sed -n "$line,$((line))p")\t$(echo "$PLATFORM_TABLE" | sed -n "$((line+1)),$((line+1))p")")"
+done < <(echo "$LINE_NUMBER" | sed -n '1~2p')
+FULL_INFO="$(echo "$FULL_INFO" | sed -n '2,$p')"
+PLATFORM_SELECT=1
 
-# Exit out if PLATFORM was invalid
-if [ $? = 1 ]; then
+FULL_INFO_LINES="$(echo "$FULL_INFO" | wc -l)"
+if [ "$FULL_INFO_LINES" -lt 1 ]; then
+	# PLATFORM was not found in PLATFORM_TABLE
 	echo "Error: Unknown PLATFORM \"$PLATFORM\""
 	print_help
 	exit 0
+elif [ "$FULL_INFO_LINES" -gt 1 ]; then
+	# PLATFORM matched multiple platforms; prompt the user which to use
+	if [ "$PROMPT" -eq 1 ]; then
+		echo "Multiple platforms match \"$PLATFORM\". Select from the list below"
+		for i in $(seq 1 $FULL_INFO_LINES); do
+			echo "($i) $(echo "$FULL_INFO" | sed -n "$i,$((i))p" | cut -f 1)"
+		done
+		echo
+		echo -n "Which platform? (default: 1) "
+		read -r INPUT
+		if [ "$INPUT" -lt 1 ] || [ "$INPUT" -gt "$FULL_INFO_LINES" ]; then
+			echo "Invalid platform number. Defaulting to $PLATFORM_SELECT"
+		else
+			PLATFORM_SELECT="$INPUT"
+		fi
+	fi
 fi
 
+FULL_INFO="$(echo "$FULL_INFO" | sed -n "$PLATFORM_SELECT,$((PLATFORM_SELECT))p")"
+echo "Targeting $(echo "$FULL_INFO" | cut -f 1)"
 
-NAME=$(echo "$FULL_INFO" | head -n 1 | cut -d ':' -f 1)
-VERSION=$(echo "$FULL_INFO" | head -n 1 | cut -d ':' -f 2 | sed 's/^[ ]*//g' | grep -E -o "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+")
-URL=$(echo "$FULL_INFO" | sed -n "2p")
+NAME="$(echo "$FULL_INFO" | cut -f 1 | cut -d ':' -f 1)"
+VERSION="$(echo "$FULL_INFO" | cut -f 1 | cut -d ':' -f 2 | sed 's/^[ ]*//g' | grep -E -o "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+")"
+URL="$(echo "$FULL_INFO" | cut -f 2)"
+
+# Ensure selected platform is supported
+if [ ! "${SUPPORTED_PLATFORMS["$NAME"]}" = '1' ]; then
+	echo "$0 does not currently support $NAME"
+	exit 0
+fi
 
 # Handle if LINK is in PATH by getting the absolute path with which
 if [ ! -e "$LINK" ] && [ -e "$(which "$LINK")" ]; then
