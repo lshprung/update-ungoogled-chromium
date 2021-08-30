@@ -142,15 +142,26 @@ PLATFORM_TABLE=$(echo "$PARSED_XML" | grep -E '(/feed/entry/title=)|(/feed/entry
 # Get platform information matching PLATFORM, handle any ambiguity by prompting for a selection (PLATFORM+SELECT)
 LINE_NUMBER=$(echo "$PLATFORM_TABLE" | grep -i -n "$PLATFORM" | cut -d ':' -f 1)
 while read -r line; do
-	FULL_INFO="$(echo -e "$FULL_INFO\n$(echo "$PLATFORM_TABLE" | sed -n "$line,$((line))p")\t$(echo "$PLATFORM_TABLE" | sed -n "$((line+1)),$((line+1))p")")"
-done < <(echo "$LINE_NUMBER" | sed -n '1~2p')
+	# Ignore invalid LINE_NUMBER
+	# Ignore links
+	if [[ ! "$line" =~ [0-9]+ || "$(echo "$PLATFORM_TABLE" | sed -n "$line,$((line))p")" =~ ^https.* ]]; then
+		continue
+	fi
+	# Check that this platform is supported
+	if [ -v ${SUPPORTED_PLATFORMS["$(echo "$PLATFORM_TABLE" | sed -n "$line,$((line))p" | cut -d ':' -f 1)"]} ]; then
+		FULL_INFO="$(echo -e "$FULL_INFO\n$(echo "$PLATFORM_TABLE" | sed -n "$line,$((line))p")\t$(echo "$PLATFORM_TABLE" | sed -n "$((line+1)),$((line+1))p")")"
+	fi
+done < <(echo "$LINE_NUMBER")
 FULL_INFO="$(echo "$FULL_INFO" | sed -n '2,$p')"
 PLATFORM_SELECT=1
 
 FULL_INFO_LINES="$(echo "$FULL_INFO" | wc -l)"
-if [ "$FULL_INFO_LINES" -lt 1 ]; then
+#echo "$FULL_INFO"
+#echo "$FULL_INFO_LINES"
+if [ -z "$FULL_INFO" ]; then
 	# PLATFORM was not found in PLATFORM_TABLE
-	echo "Error: Unknown PLATFORM \"$PLATFORM\""
+	echo "Error: No supported platforms match \"$PLATFORM\""
+	echo "For a list of supported platforms, see the README"
 	print_help
 	exit 0
 elif [ "$FULL_INFO_LINES" -gt 1 ]; then
@@ -177,12 +188,6 @@ echo "Targeting $(echo "$FULL_INFO" | cut -f 1)"
 NAME="$(echo "$FULL_INFO" | cut -f 1 | cut -d ':' -f 1)"
 VERSION="$(echo "$FULL_INFO" | cut -f 1 | cut -d ':' -f 2 | sed 's/^[ ]*//g' | grep -E -o "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+")"
 URL="$(echo "$FULL_INFO" | cut -f 2)"
-
-# Ensure selected platform is supported
-if [ ! "${SUPPORTED_PLATFORMS["$NAME"]}" = '1' ]; then
-	echo "$0 does not currently support $NAME"
-	exit 0
-fi
 
 # Handle if LINK is in PATH by getting the absolute path with which
 if [ ! -e "$LINK" ] && [ -e "$(which "$LINK")" ]; then
