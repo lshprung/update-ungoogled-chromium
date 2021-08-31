@@ -148,7 +148,7 @@ while read -r line; do
 		continue
 	fi
 	# Check that this platform is supported
-	if [ -v ${SUPPORTED_PLATFORMS["$(echo "$PLATFORM_TABLE" | sed -n "$line,$((line))p" | cut -d ':' -f 1)"]} ]; then
+	if [ "${SUPPORTED_PLATFORMS["$(echo "$PLATFORM_TABLE" | sed -n "$line,$((line))p" | cut -d ':' -f 1)"]}" = '1' ]; then
 		FULL_INFO="$(echo -e "$FULL_INFO\n$(echo "$PLATFORM_TABLE" | sed -n "$line,$((line))p")\t$(echo "$PLATFORM_TABLE" | sed -n "$((line+1)),$((line+1))p")")"
 	fi
 done < <(echo "$LINE_NUMBER")
